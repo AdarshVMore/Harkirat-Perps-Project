@@ -14,7 +14,11 @@ contract PerpsMain {
 
     mapping(address => Position) public positions;
 
+    event positionOpened(address user, uint256 size);
+    event Liquidated(address user, uint256 currentPrice);
+
     uint256 public price = 1000;
+    uint256 public constant PRECISION = 1e18;
 
     function setPrice(uint256 _price) external {
         price = _price;
@@ -42,15 +46,23 @@ contract PerpsMain {
         uint256 currentPrice
     ) public view returns (int256) {
         Position memory userPosition = positions[user];
+
         if (userPosition.isLong) {
             return
-                int256(int256(currentPrice) - int256(userPosition.entryPrice)) *
-                int256(userPosition.size);
+                ((int256(currentPrice) - int256(userPosition.entryPrice)) *
+                    int256(userPosition.size)) /
+                int256(userPosition.entryPrice);
         } else {
             return
-                int256(int256(userPosition.entryPrice) - int256(currentPrice)) *
-                int256(userPosition.size);
+                ((int256(userPosition.entryPrice) - int256(currentPrice)) *
+                    int256(userPosition.size)) /
+                int256(userPosition.entryPrice);
         }
+    }
+
+    function getPosition(address user) public view returns (Position memory) {
+        Position memory currentPosition = positions[user];
+        return currentPosition;
     }
 
     function shouldLiquidate(
@@ -59,8 +71,13 @@ contract PerpsMain {
     ) public view returns (bool) {
         int256 pnl = getProfitNLoss(user, currentPrice);
         if (pnl < 0 && uint256(-pnl) >= positions[user].collateral) {
-            return false;
+            return true;
         }
-        return true;
+        return false;
+    }
+
+    function liquidate(address user, uint256 currentPrice) public {
+        require(shouldLiquidate(user, currentPrice), "Not liquidatable");
+        delete positions[user];
     }
 }
